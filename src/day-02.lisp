@@ -1,17 +1,14 @@
 (defpackage :day-02
   (:use :cl)
   (:import-from :utils :read-day-file)
-  (:import-from :cl-ppcre :split)
   (:export #:part-1 #:part-2))
 
 (in-package :day-02)
 
 (defun eval-file (func)
   (dolist (line (read-day-file "02"))
-    (let* ((parts (split " " line))
-           (sym (intern (string-upcase (car parts))))
-           (x (parse-integer (cadr parts))))
-      (funcall func sym x))))
+    (let ((lst (read-from-string (concatenate 'string "(" line ")"))))
+      (apply func lst))))
 
 (defun part-1 ()
   (let ((horizontal 0)
