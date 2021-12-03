@@ -6,4 +6,5 @@
   :depends-on ("alexandria" "cl-ppcre" "fare-memoization" "array-operations" "infix-math")
   :components ((:file "src/utils")
                (:file "src/day-01" :depends-on ("src/utils"))
-               (:file "src/day-02" :depends-on ("src/utils"))))
+               (:file "src/day-02" :depends-on ("src/utils"))
+               (:file "src/day-03" :depends-on ("src/utils"))))
