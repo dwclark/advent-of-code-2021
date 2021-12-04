@@ -1,11 +1,15 @@
 (defpackage :utils
   (:use :cl)
-  (:export #:read-file :read-day-file :split-blank-lines #:*input-directory* 
+  (:export #:read-file #:read-day-file #:split-blank-lines #:read-blank-line-blocks
+           #:*input-directory* 
            #:bit-vector->integer #:integer->bit-vector #:power-set))
 
 (in-package :utils)
 
 (defparameter *input-directory* nil)
+
+(defun day-file-name (day)
+  (concatenate 'string *input-directory* "day-" day ".txt"))
 
 (defun read-file (file-name)
   (with-open-file (stm file-name)
@@ -15,6 +19,23 @@
 
 (defun read-day-file (day)
   (read-file (concatenate 'string *input-directory* "day-" day ".txt")))
+
+(defun read-blank-line-blocks (day)
+  (let ((blocks nil)
+        (current ""))
+    (with-open-file (stm (day-file-name day))
+      (loop for line = (read-line stm nil)
+            while line
+            do (if (< 0 (length line))
+                   (progn (if (= 0 (length current))
+                              (setf current line)
+                              (setf current (concatenate 'string current (vector #\Newline) line))))
+                   (progn
+                     (push current blocks)
+                     (setf current "")))
+            finally (return (progn
+                              (push current blocks)
+                              (nreverse blocks)))))))
 
 (defun load-numbers (day)
   (map 'vector #'parse-integer (read-day-file day)))
