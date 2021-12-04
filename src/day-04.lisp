@@ -21,20 +21,19 @@
 (defun read-moves (s)
   (read-from-string (concatenate 'string "(" (substitute #\Space #\, s) ")")))
 
-(defun to-cons (lst) (mapcar #'(lambda (e) (cons e nil)) lst))
-
 (defun read-matrices (lst)
-  (mapcar #'(lambda (sub)
-              (make-array (* *side* *side*) :initial-contents
-                          (to-cons (read-from-string (concatenate 'string "(" sub ")")))))
-          lst))
+  (flet ((to-cons (tmp) (mapcar #'(lambda (e) (cons e nil)) tmp)))
+    (mapcar #'(lambda (sub)
+                (make-array (* *side* *side*) :initial-contents
+                            (to-cons (read-from-string (concatenate 'string "(" sub ")")))))
+            lst)))
 
-(defun move (num matrices)
+(defun bingo-round (num matrices)
   (loop for matrix in matrices
         do (loop for cell across matrix
                  do (if (= num (car cell))
-                        (setf (cdr cell) t))))
-  matrices)
+                        (setf (cdr cell) t)))
+        finally (return matrices)))
 
 (defun sum-unmarked (matrix)
   (reduce #'+ matrix :key #'(lambda (cell) (if (not (cdr cell)) (car cell) 0))))
@@ -50,7 +49,7 @@
          (matrices (read-matrices (rest entries))))
     (loop for num in moves
           do (progn
-               (move num matrices)
+               (bingo-round num matrices)
                (let ((winner (first (remove-if-not #'winner-p matrices))))
                  (if winner (return-from part-1 (* num (sum-unmarked winner)))))))))
 
@@ -61,12 +60,9 @@
     (loop with remaining = matrices
           for num in moves
           do (progn
-               (move num remaining)
+               (bingo-round num remaining)
                (let ((winner (first (remove-if-not #'winner-p remaining))))
                  (if winner
                      (setf remaining (remove-if #'winner-p remaining)))
                  (if (not remaining)
                      (return-from part-2 (* num (sum-unmarked winner)))))))))
-                     
-                           
-
