@@ -33,13 +33,6 @@
 (defun display-digit-to-number (str &optional (display-digits *display-digits*))
   (position str display-digits :test #'string=))
 
-(defun part-1 ()
-  (let ((outputs (mapcar (curry #'nthcdr 11) (mapcar (curry #'split "\\s") (read-day-file "08")))))
-    (reduce #'+ (mapcar #'(lambda (lst)
-                            (count-if #'(lambda (s)
-                                          (let ((len (length s)))
-                                            (or (= len 2) (= len 4) (= len 3) (= len 7)))) lst)) outputs))))
-
 (defun inputs-outputs ()
   (let* ((initial-list (read-day-file "08"))
          (list-of-strings (mapcar #'(lambda (s) (split "\\s" s)) initial-list)))
@@ -52,7 +45,16 @@
   (loop for possible-digital-display across *all-possible-digital-displays*
         do (if (not (set-difference input possible-digital-display :test #'string=))
                (return-from find-rewiring possible-digital-display))))
-  
+
+(defun part-1 ()
+  (flet ((is-1-4-7-or-8 (s)
+           (let ((len (length s)))
+             (or (= len 2) (= len 4) (= len 3) (= len 7)))))
+    (let* ((ios (inputs-outputs))
+           (outputs (mapcar #'(lambda (io) (getf io :outputs)) ios)))
+
+      (reduce #'+ (mapcar (curry #'count-if #'is-1-4-7-or-8) outputs)))))
+
 (defun part-2 ()
   (let* ((ios (inputs-outputs))
          (actual-leds (loop for io in ios
