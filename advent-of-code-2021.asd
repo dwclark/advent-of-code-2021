@@ -11,4 +11,5 @@
                (:file "src/day-04" :depends-on ("src/utils"))
                (:file "src/day-05" :depends-on ("src/utils"))
                (:file "src/day-06" :depends-on ("src/utils"))
-               (:file "src/day-07" :depends-on ("src/utils"))))
+               (:file "src/day-07" :depends-on ("src/utils"))
+               (:file "src/day-08" :depends-on ("src/utils"))))
