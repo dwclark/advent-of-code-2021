@@ -17,6 +17,11 @@
           while line
           collect line)))
 
+(defun read-2d-world (day)
+  (let ((init (mapcar #'(lambda (s) (map 'list #'digit-char-p s)) (read-day-file day))))
+    (make-array (list (length init) (length (car init)))
+                :initial-contents init)))
+
 (defun read-day-file (day)
   (read-file (concatenate 'string *input-directory* "day-" day ".txt")))
 
