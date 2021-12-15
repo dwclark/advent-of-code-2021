@@ -7,6 +7,7 @@
 
 (in-package :day-14)
 
+;;;transforms are returned in a hashtable in this pattern: [ (first-letter . second-letter): transform ]
 (defun load-data ()
   (let* ((initial (read-day-file "14"))
          (template (car initial))
@@ -16,6 +17,8 @@
                (setf (gethash (cons (aref pattern 0) (aref pattern 1)) hash) (aref inserts 0))))
     (values template hash)))
 
+;;;transform the template to reflect the keys in load-data
+;;;returned table is in this pattern [ ((first-letter . second-letter) 'regular-or-last): count ]
 (defun template->augment (template)
   (loop with hash = (make-hash-table :test #'equal)
         for i from 0 below (1- (length template))
@@ -23,6 +26,11 @@
                                  (if (= (length template) (+ 2 i)) 'last 'regular)) hash 1)
         finally (return hash)))
 
+;;; Basic algorithm
+;;; 1) extract the first-letter/second-letter pattern from the augment table
+;;; 2) look up the transformation in the table (same key as is the first atom in the list key in augment)
+;;; 3) add data to new-augment for the first-letter + insert letter with 'regular type
+;;; 4) add data to new-augment for the insert + second-letter with the correct type
 (defun polymer-step (augment table)
   (loop with new-augment = (make-hash-table :test #'equal)
         for (cell type) being the hash-keys in augment using (hash-value c)
@@ -32,6 +40,10 @@
              (incf (gethash (list (cons transform (cdr cell)) last-type) new-augment 0) c))
         finally (return new-augment)))
 
+;;; gather counts. If the cell is a 'regular type then only add in the counts for the first letter
+;;; in the cons cell. If it is a 'last type, also add the counts for second letter. Once completed,
+;;; transform the hash table to an a-list, sort the cells by the count, then subtract the last count (biggest)
+;;; from the first count (smallest)
 (defun diff-counts (augment)
   (loop with totals = (make-hash-table :test #'equal)
         for ((f . s) type) being the hash-keys in augment using (hash-value c)
