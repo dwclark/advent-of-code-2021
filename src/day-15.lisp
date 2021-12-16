@@ -26,6 +26,7 @@
 (defun node-h (node)
   (cdr (node-coordinates node)))
 
+;Dijkstra using min-priority-queue
 (defun minimal-cost (world)
   (let* ((nodes (make-hash-table :test #'equal))
          (pq (make-instance 'fibonacci-heap :key #'node-key))
