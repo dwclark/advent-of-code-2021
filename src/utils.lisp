@@ -22,6 +22,55 @@
     (make-array (list (length init) (length (car init)))
                 :initial-contents init)))
 
+(defparameter *to-add/8* '((-1 . -1) (-1 . 0)  (-1 . 1)
+                           (0 . -1)            (0 . 1)
+                           (1 . -1)  (1 . 0)   (1 . 1)))
+
+(defparameter *to-add/4* '(          (-1 . 0)
+                           (0 . -1)            (0 . 1)
+                                     (1 . 0)))
+
+(defparameter *to-add/2* '((0 . 1) (1 . 0)))
+
+(defun each-neighbor/8 (world row col func)
+  (let ((max-row (array-dimension world 0))
+        (max-col (array-dimension world 1)))
+    (flet ((legal-p (r c)
+             (and (<= 0 r) (<= 0 c)
+                  (< r max-row) (< c max-col))))
+
+      (loop for (add-row . add-col) in *to-add/8*
+            do (let ((new-row (+ add-row row))
+                     (new-col (+ add-col col)))
+                 (if (legal-p new-row new-col)
+                     (funcall func new-row new-col)))))))
+
+(defun each-neighbor/4 (world row col func)
+  (let ((max-row (array-dimension world 0))
+        (max-col (array-dimension world 1)))
+    (flet ((legal-p (r c)
+             (and (<= 0 r) (<= 0 c)
+                  (< r max-row) (< c max-col))))
+
+      (loop for (add-row . add-col) in *to-add/4*
+            do (let ((new-row (+ add-row row))
+                     (new-col (+ add-col col)))
+                 (if (legal-p new-row new-col)
+                     (funcall func new-row new-col)))))))
+
+(defun each-neighbor/2 (world row col func)
+  (let ((max-row (array-dimension world 0))
+        (max-col (array-dimension world 1)))
+    (flet ((legal-p (r c)
+             (and (<= 0 r) (<= 0 c)
+                  (< r max-row) (< c max-col))))
+
+      (loop for (add-row . add-col) in *to-add/2*
+            do (let ((new-row (+ add-row row))
+                     (new-col (+ add-col col)))
+                 (if (legal-p new-row new-col)
+                     (funcall func new-row new-col)))))))
+
 (defun read-day-file (day)
   (read-file (concatenate 'string *input-directory* "day-" day ".txt")))
 
