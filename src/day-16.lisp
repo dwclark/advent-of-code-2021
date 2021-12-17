@@ -6,20 +6,9 @@
 
 (in-package :day-16)
 
-(defparameter *ex-1* "D2FE28")
-(defparameter *op-1* "38006F45291200")
-(defparameter *op-2* "EE00D40C823060")
-
 (defstruct packet version type-id)
 (defstruct (literal (:include packet)) value)
 (defstruct (operator (:include packet)) sub-packets)
-
-(defun packet-bit-length (i)
-  (let* ((len (integer-length i))
-         (remainder (rem len 4)))
-    (if (zerop remainder)
-        len
-        (+ len (- 4 remainder)))))
 
 (defun parse-version (bytes start-index)
   (let ((next-index start-index))
