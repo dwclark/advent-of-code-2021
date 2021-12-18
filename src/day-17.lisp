@@ -63,8 +63,8 @@
 ;;The trick is to realize that the velocity in the y-axis on the way down
 ;;will be precisely the same at 0 as the initial velocity. So if the probe
 ;;is shot up with n velocity, it will have n velocity at y = 0. The n + 1
-;;step will need to hit the target area. This means that n+1 = abs(min-y),
-;;or n = abs(min-y) - y. Since min in my case was -91, n = 90. Then just
+;;step will need to hit the target area. This means that n+1 = abs(miny),
+;;or n = abs(miny) - 1. Since min in my case was -91, n = 90. Then just
 ;;use the y-max function to compute the highest point.
 (defun part-1 ()
   (y-max 90))
