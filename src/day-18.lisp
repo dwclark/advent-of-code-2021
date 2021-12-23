@@ -196,4 +196,16 @@
 (defun part-1 ()
   (magnitude-expr (apply #'fish+ (day-expressions))))
 
-(defun part-2 ())
+(defun part-2 ()
+  (loop with max-sum = 0
+        with expressions = (day-expressions)
+        for outer in expressions
+        do (loop for inner in expressions
+                 do (if (not (equal outer inner))
+                        (let ((v1 (magnitude-expr (fish+ outer inner)))
+                              (v2 (magnitude-expr (fish+ inner outer))))
+                          (if (< max-sum v1)
+                              (setf max-sum v1))
+                          (if (< max-sum v2)
+                              (setf max-sum v2)))))
+        finally (return max-sum)))
