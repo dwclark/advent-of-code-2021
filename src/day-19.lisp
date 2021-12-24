@@ -171,24 +171,64 @@
              (setf current-idx idx))
         finally (return working)))
 
+(defun origin-transformation (table path)
+  (loop with working = (vector 0 0 0)
+        with current-idx = (first path)
+        for idx in (rest path)
+        do (let ((func (gethash (cons current-idx idx) table)))
+             (setf working (funcall func working))
+             (setf current-idx idx))
+        finally (return working)))
+
+(defun all-paths->zero (scanners all-paths)
+  (flet ((neighbors (x)
+           (mapcar #'cdr (remove-if-not (curry #'= x) all-paths :key #'car))))
+    (loop with paths = (make-hash-table :test #'equalp)
+          for scanner in (rest scanners)
+          do (setf (gethash (scanner-index scanner) paths)
+                   (shortest-path (scanner-index scanner) (curry #'= 0) #'neighbors))
+          finally (return paths))))
+
 (defun part-1 ()
   (let* ((scanners (make-scanners))
          (transform-table (build-all-transformations scanners))
          (alist (hash-table-alist transform-table))
          (all-paths (mapcar #'car alist))
+         (paths->zero (all-paths->zero scanners all-paths))
          (de-duped (make-hash-table :test #'equalp)))
 
-    (flet ((neighbors (x)
-             (mapcar #'cdr (remove-if-not (curry #'= x) all-paths :key #'car))))
-      (loop for scanner in (rest scanners)
-            do (let ((path (shortest-path (scanner-index scanner) (curry #'= 0) #'neighbors)))
-                 (loop for coord in (apply-all-transformations transform-table scanner path)
-                       do (setf (gethash coord de-duped) t)))))
+    ;; add in rest of scanners
+    (loop for scanner in (rest scanners)
+          do (let ((path (gethash (scanner-index scanner) paths->zero)))
+               (loop for coord in (apply-all-transformations transform-table scanner path)
+                     do (setf (gethash coord de-duped) t))))
+
+    ;;add in scanner 0
     (dolist (coord (scanner-coordinates (first scanners)))
       (setf (gethash coord de-duped) t))
-
+    
     (hash-table-count de-duped)))
 
 
 (defun part-2 ()
-  
+  (let* ((scanners (make-scanners))
+         (transform-table (build-all-transformations scanners))
+         (alist (hash-table-alist transform-table))
+         (all-paths (mapcar #'car alist))
+         (paths->zero (all-paths->zero scanners all-paths))
+         (all-origins nil))
+    (push (vector 0 0 0) all-origins)
+    (loop for scanner in (rest scanners)
+          do (push (origin-transformation transform-table (gethash (scanner-index scanner) paths->zero)) all-origins))
+
+    (loop with max-distance = 0
+          for outer-idx from 0 below (length all-origins)
+          do (loop with outer-origin = (nth outer-idx all-origins)
+                   for inner-idx from 1 below (length all-origins)
+                   do (let* ((inner-origin (nth inner-idx all-origins))
+                             (distance (manhattan outer-origin inner-origin)))
+                        (if (< max-distance distance)
+                            (setf max-distance distance))))
+          finally (return max-distance))))
+                        
+          
