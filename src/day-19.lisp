@@ -2,7 +2,8 @@
   (:use :cl)
   (:import-from :utils :read-blank-line-blocks)
   (:import-from :cl-ppcre :split :do-register-groups)
-  (:import-from :alexandria :hash-table-alist)
+  (:import-from :alexandria :hash-table-alist :curry)
+  (:import-from :metabang.cl-containers :basic-queue :insert-item :delete-first :empty-p)
   (:export #:part-1 #:part-2))
 
 (in-package :day-19)
@@ -63,6 +64,11 @@
         #'(lambda (c) (vector (- (get-z c)) (get-x c) (- (get-y c))))
         #'(lambda (c) (vector (get-x c) (get-z c) (- (get-y c))))))
 
+(defparameter *all-inverse-transforms*
+  (mapcar #'(lambda (f)
+              (find-if #'(lambda (inv)
+                           (equalp (vector 1 2 3) (funcall inv (funcall f (vector 1 2 3))))) *all-transforms*)) *all-transforms*))
+
 (defstruct scanner index coordinates)
 
 (defun make-scanners ()
@@ -78,38 +84,111 @@
                      finally (push (make-scanner :index index :coordinates (reverse coords)) ret))))
         finally (return (reverse ret))))
 
-;; c1 + diff = c2
-(defun coordinate-translation (c1 c2)
-  (vector (- (get-x c2) (get-x c1))
-          (- (get-y c2) (get-y c1))
-          (- (get-z c2) (get-z c1))))
+(defun coord- (c1 c2)
+  (vector (- (get-x c1) (get-x c2))
+          (- (get-y c1) (get-y c2))
+          (- (get-z c1) (get-z c2))))
 
-(defun coordinate-diffs (coordinates-1 coordinates-2)
+(defun coord+ (c1 c2)
+  (vector (+ (get-x c1) (get-x c2))
+          (+ (get-y c1) (get-y c2))
+          (+ (get-z c1) (get-z c2))))
+
+(defun manhattan (c1 c2)
+  (reduce #'+ (vector (abs (- (get-x c1) (get-x c2)))
+                      (abs (- (get-y c1) (get-y c2)))
+                      (abs (- (get-z c1) (get-z c2))))))
+
+
+;;finds t = func(source) - dest
+(defun find-translation (func source-coordinates dest-coordinates)
   (loop with table = (make-hash-table :test #'equalp)
-        for c1 in coordinates-1
-        do (loop for c2 in coordinates-2
-                 do (incf (gethash (coordinate-translation c1 c2) table 0)))
-        finally (return (sort (hash-table-alist table) #'(lambda (cons-1 cons-2) (> (cdr cons-1) (cdr cons-2)))))))
+        for transformed-source in (mapcar func source-coordinates)
+        do (loop for dest in dest-coordinates
+                 do (incf (gethash (coord- transformed-source dest) table 0))
+                 finally (loop for key being the hash-keys in table using (hash-value val)
+                               do (if (<= 12 val)
+                                      (return-from find-translation key)))))
+  nil)
 
-(defun find-transform-and-translation (scanner-1 scanner-2)
-  (loop with coordinates-1 = (scanner-coordinates scanner-1)
-        for func in *all-transforms*
-        do (let* ((coordinates-2 (mapcar func (scanner-coordinates scanner-2)))
-                  (diffs (coordinate-diffs coordinates-1 coordinates-2)))
-             (if (<= 12 (cdr (first diffs)))
-                 (progn
-                   (format t "~A~%" (remove-if-not #'(lambda (c) (<= 12 (cdr c))) diffs))
-                   (return-from find-transform-and-translation (values (car (first diffs)) func))))))
+(defun find-transform-and-translation (source-scanner dest-scanner)
+  (loop with source-coordinates = (scanner-coordinates source-scanner)
+        with dest-coordinates = (scanner-coordinates dest-scanner)
+        for idx from 0 below (length *all-transforms*)
+        do (let* ((func (nth idx *all-transforms*))
+                  (translation (find-translation func source-coordinates dest-coordinates)))
+             (if translation
+                 (return-from find-transform-and-translation (values idx translation)))))
   (values nil nil))
 
-(defun part-1 ()
-  (let ((scanners (make-scanners)))
-    (loop for outer-idx from 0 below (length scanners)
-          do (loop with scanner-1 = (nth outer-idx scanners)
-                   for inner-idx from (1+ outer-idx) below (length scanners)
-                   do (let ((scanner-2 (nth inner-idx scanners)))
-                        (multiple-value-bind (translation func) (find-transform-and-translation scanner-1 scanner-2)
-                          (if translation
-                              (format t "~A->~A ~A ~A~%" (scanner-index scanner-1) (scanner-index scanner-2) translation func))))))))
+;;TODO inverse translation does not appear to work.
+;;since t = func(source) - dest, then dest = func(source) - t
+(defun build-all-transformations (scanners)
+  (loop with table = (make-hash-table :test #'equal)
+        for outer-idx from 0 below (length scanners)
+        do (loop with source-scanner = (nth outer-idx scanners)
+                 for inner-idx from (1+ outer-idx) below (length scanners)
+                 do (let ((dest-scanner (nth inner-idx scanners)))
+                      (multiple-value-bind (forward-idx forward-translation) (find-transform-and-translation source-scanner dest-scanner)
+                        (if forward-translation
+                            (multiple-value-bind (reverse-idx reverse-translation) (find-transform-and-translation dest-scanner source-scanner)
+                              (let ((forward-func (nth forward-idx *all-transforms*))
+                                    (reverse-func (nth reverse-idx *all-transforms*)))
+                                ;;forward translation
+                                (setf (gethash (cons outer-idx inner-idx) table)
+                                      #'(lambda (coord)
+                                          (coord- (funcall forward-func coord) forward-translation)))
+                                ;;inverse translation
+                                (setf (gethash (cons inner-idx outer-idx) table)
+                                      #'(lambda (coord)
+                                          (coord- (funcall reverse-func coord) reverse-translation)))))))))
+           
+        finally (return table)))
 
-(defun part-2 ())
+(defun shortest-path (initial goal-func neighbors-func)
+  (let ((queue (make-instance 'basic-queue))
+        (visited (make-hash-table)))
+    (insert-item queue (list initial))
+
+    (loop while (not (empty-p queue))
+          do (let* ((path (delete-first queue))
+                    (current (car path)))
+               (if (funcall goal-func current)
+                   (return-from shortest-path (reverse path)))
+               
+               (setf (gethash current visited) t)
+               (loop for child in (funcall neighbors-func current)
+                     do (if (not (gethash child visited))
+                            (insert-item queue (cons child path))))))
+    nil))
+
+(defun apply-all-transformations (table scanner path)
+  (loop with working = (scanner-coordinates scanner)
+        with current-idx = (first path)
+        for idx in (rest path)
+        do (let ((func (gethash (cons current-idx idx) table)))
+             (setf working (mapcar func working))
+             (setf current-idx idx))
+        finally (return working)))
+
+(defun part-1 ()
+  (let* ((scanners (make-scanners))
+         (transform-table (build-all-transformations scanners))
+         (alist (hash-table-alist transform-table))
+         (all-paths (mapcar #'car alist))
+         (de-duped (make-hash-table :test #'equalp)))
+
+    (flet ((neighbors (x)
+             (mapcar #'cdr (remove-if-not (curry #'= x) all-paths :key #'car))))
+      (loop for scanner in (rest scanners)
+            do (let ((path (shortest-path (scanner-index scanner) (curry #'= 0) #'neighbors)))
+                 (loop for coord in (apply-all-transformations transform-table scanner path)
+                       do (setf (gethash coord de-duped) t)))))
+    (dolist (coord (scanner-coordinates (first scanners)))
+      (setf (gethash coord de-duped) t))
+
+    (hash-table-count de-duped)))
+
+
+(defun part-2 ()
+  

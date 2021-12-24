@@ -3,7 +3,7 @@
   :author "David Clark <daveloper9000@gmail.com>"
   :license  "Apache 2"
   :version "0.0.1"
-  :depends-on ("alexandria" "cl-ppcre" "fare-memoization" "array-operations" "infix-math" "cl-heap")
+  :depends-on ("alexandria" "cl-ppcre" "fare-memoization" "array-operations" "infix-math" "cl-heap" "cl-containers")
   :components ((:file "src/utils")
                (:file "src/day-01" :depends-on ("src/utils"))
                (:file "src/day-02" :depends-on ("src/utils"))
