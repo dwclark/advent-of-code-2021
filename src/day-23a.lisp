@@ -2,7 +2,9 @@
   (:use :cl)
   (:import-from :utils :read-day-file)
   (:import-from :alexandria :alist-hash-table :define-constant :hash-table-keys :plist-hash-table
-                :hash-table-values :copy-hash-table :maphash-keys :rcurry :hash-table-alist)
+   :hash-table-values :copy-hash-table :maphash-keys :rcurry :hash-table-alist)
+  (:import-from :metabang.cl-containers :set-container :insert-item :find-item)
+  (:import-from :cl-heap :decrease-key :fibonacci-heap :pop-heap :add-to-heap)
   (:export #:part-1 #:part-2))
 
 (declaim (optimize (debug 0)))
@@ -13,7 +15,7 @@
   node-id coordinate room-for room-pair neighbors)
 
 (defstruct (board (:conc-name nil))
-  (positions 0 :type fixnum) (energy 0 :type fixnum) (heuristic 0 :type fixnum))
+  (positions 0 :type fixnum) (energy 0 :type fixnum) (heuristic 0 :type fixnum) queue-node)
 
 (defparameter *byte-specs*
   (plist-hash-table (list :a (vector (byte 8 0) (byte 8 8))
@@ -80,6 +82,22 @@
           *nodes-list*
           :initial-value (make-hash-table)))
 
+(defun pack-positions (table)
+  (loop with ret = 0
+        for sym being the hash-keys in table using (hash-value values)
+        do (let ((specs (gethash sym *byte-specs*)))
+             (loop for num across values
+                   for spec across specs
+                   do (setf ret (logior (dpb num spec ret)))))
+        finally (return ret)))
+
+(defun unpack-positions (num)
+  (loop with table = (make-positions-table)
+        for sym being the hash-keys in *byte-specs* using (hash-value specs)
+        do (loop for spec across specs
+                 do (vector-push (ldb spec num) (gethash sym table)))
+        finally (return table)))
+
 (defparameter *finished*
   (loop with tmp = (make-hash-table)
         for room-sym being the hash-keys in *nodes-destinations* using (hash-value nodes-vec)
@@ -102,22 +120,6 @@
                           :c (make-array 2 :fill-pointer 0)
                           :d (make-array 2 :fill-pointer 0))))
 
-(defun pack-positions (table)
-  (loop with ret = 0
-        for sym being the hash-keys in table using (hash-value values)
-        do (let ((specs (gethash sym *byte-specs*)))
-             (loop for num across values
-                   for spec across specs
-                   do (setf ret (logior (dpb num spec ret)))))
-        finally (return ret)))
-
-(defun unpack-positions (num)
-  (loop with table = (make-positions-table)
-        for sym being the hash-keys in *byte-specs* using (hash-value specs)
-        do (loop for spec across specs
-                 do (vector-push (ldb spec num) (gethash sym table)))
-        finally (return table)))
-
 (defun manhattan (n1 n2)
   (flet ((row (n) (car (coordinate n)))
          (col (n) (cdr (coordinate n))))
@@ -134,91 +136,72 @@
   (let ((id (node-id n)))
     (or (= id 3) (= id 5) (= id 7) (= id 9))))
 
-(defun occupied-p (node-id packed-positions)
-  (loop for specs being the hash-values in *byte-specs*
+(defun packed->occupied-set (packed-positions)
+  (loop with ret = (make-instance 'set-container)
+        for specs being the hash-values in *byte-specs*
         do (loop for spec across specs
-                 do (if (= node-id (ldb spec packed-positions))
-                        (return-from occupied-p t))))
-  nil)
-        
-(defun estimated-remaining-cost (packed)
+                 do (insert-item ret (ldb spec packed-positions)))
+        finally (return ret)))
+  
+(defun estimated-remaining-cost (unpacked)
   (loop with total = 0
         for room-sym being the hash-keys in *nodes-destinations* using (hash-value nodes-vec)
-        do (let* ((specs (gethash room-sym *byte-specs*))
-                  (per-move (gethash room-sym *energies*))
+        do (let* ((per-move (gethash room-sym *energies*))
+                  (current-ids (gethash room-sym unpacked))
                   (room-1 (aref nodes-vec 0))
                   (room-2 (aref nodes-vec 1))
-                  (node-1 (gethash (ldb (aref specs 0) packed) *nodes-table*))
-                  (node-2 (gethash (ldb (aref specs 1) packed) *nodes-table*)))
+                  (node-1 (gethash (aref current-ids 0) *nodes-table*))
+                  (node-2 (gethash (aref current-ids 1) *nodes-table*)))
 
              (incf total (* per-move (min (+ (manhattan room-1 node-1)
                                              (manhattan room-2 node-2))
                                           (+ (manhattan room-1 node-2)
                                              (manhattan room-2 node-1))))))
         finally (return total)))
-                  
+
+(defun final-place-p (letter idx pos-ary)
+  (let ((node-destination (gethash letter *nodes-destinations*))
+        (id (aref pos-ary idx)))
+    (or (= id (node-id (aref node-destination 1))) ;in bottom of room
+        (and (= id (node-id (aref node-destination 0))) ;in top of room
+             (= (aref pos-ary 1) (node-id (aref node-destination 1)))))))
+
+(defun target-room-p (letter to-node pos-ary)
+  (and (eq letter (room-for to-node))
+       (or (not (room-pair to-node))
+           (= (room-pair to-node) (aref pos-ary 1)))))
   
+(defun legal-move-p (letter idx unpacked to-id)
+  (let* ((from-id (aref (gethash letter unpacked) idx))
+         (pos-ary (gethash letter unpacked))
+         (from-node (gethash from-id *nodes-table*))
+         (to-node (gethash to-id *nodes-table*)))
 
-#|(defun next-board (the-board idx new-id distance)
-  (let* ((letter (index->letter idx))
-         (specs (gethash letter *byte-specs*))
-         (pack (positions the-board))
-         (val-0 (if (evenp idx) new-id (ldb (aref specs 0) pack)))
-         (val-1 (if (oddp idx) new-id (ldb (aref specs 1) pack)))
-         (new-energy (+ (energy the-board) (* distance (gethash letter *energies*)))))
-    (setf pack (dpb (min val-0 val-1) (aref specs 0) pack))
-    (setf pack (dbp (max val-0 val-1) (aref specs 1) pack))
-    (make-board :positions pack
-                :energy new-energy
-                :heuristic (+ new-energy (estimated-remaining-cost pack)))))
-  |#
-  
-;(defun can-visit-p (letter start-node dest-node)
-;  nil)
-  ;; (if (and (eq :hall (cell-type start-node))
-  ;;          (eq :hall (cell-type dest-node)))
-  ;;     (return-from can-visit-p nil))
+    (if (and (hall-p from-node)
+             (hall-p to-node))
+        (return-from legal-move-p nil))
 
-  ;; (if (and (eq :room (cell-type start-node))
-  ;;          (eq :hall (cell-type dest-node))
-  ;;          (stop-p dest-node))
-  ;;     (return-from can-visit-p t))
+    (if (and (room-p from-node)
+             (hall-p to-node))
+        (if (and (not (stop-p to-node))
+                 (not (final-place-p letter idx pos-ary)))
+            (return-from legal-move-p t)
+            (return-from legal-move-p nil)))
 
+    (if (and (hall-p from-node)
+             (room-p to-node))
+        (if (target-room-p letter to-node pos-ary)
+            (return-from legal-move-p t)
+            (return-from legal-move-p nil)))
 
+    (if (and (room-p from-node)
+             (room-p to-node))
+        (if (and (not (final-place-p letter idx pos-ary))
+                 (target-room-p letter to-node pos-ary))
+            (return-from legal-move-p t)
+            (return-from legal-move-p nil)))
 
-#|(defun next-boards (the-board)
-  (let ((current-positions (unpack-positions (positions the-board)))
-        (ret (make-array 8 :adjustable t :fill-pointer 0))
-        (frontier nil)
-        (visited (make-hash-table :size 32)))
-    (dotimes (idx (length current-positions))
-      (setf frontier nil)
-      (clrhash visited)
-      (let* ((start-id (aref current-positions idx))
-             (start-letter (index->letter idx))
-             (start-node (gethash start-id *nodes*)))
-        ;;need to prevent processing of any nodes that can't leave where they are now
-        
-        ;;prevent any processing of start node, we are already here
-        (setf (gethash start-id visited) t)
-        (dolist (neighbor-id (neighbors start-node))
-          (push neighbor-id frontier))
-                             
-        (loop while frontier
-              do (destructuring-bind (current-id . distance) (pop frontier)
-                   (let ((current-node (gethash current-id *nodes*))) 
-                     
-                     (setf (gethash current-id visited) t)
-                     
-                     (if (not (find current-id current-positions))
-                         (progn
-                           (if (can-visit-p start-letter start-node current-node)
-                               (vector-push-extend (next-board the-board idx current-id distance) ret))
-                           
-                           (dolist (neighbor-id (neighbors current-node))
-                             (if (not (gethash neighbor-id visited))
-                                 (push (cons neighbor-id (1+ distance)) frontier))))))))))
-    ret))|#
+    (error "should not have arrived here")))
 
 (defun extract-positions (arg)
   (loop with lst = (cdr arg)
@@ -235,3 +218,9 @@
                               do (sort val #'<)
                               finally (return tmp-table)))))
 
+(defun schedule-moves-from-position (priority-queue visited packed-position)
+  (let ((unpacked (unpack-positions packed-position))
+        (occupied (packed->occupied-set packed-position)))
+    
+
+  ))
