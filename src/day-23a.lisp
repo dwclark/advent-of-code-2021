@@ -3,7 +3,7 @@
   (:import-from :utils :read-day-file)
   (:import-from :alexandria :alist-hash-table :define-constant :hash-table-keys :plist-hash-table
    :hash-table-values :copy-hash-table :maphash-keys :rcurry :hash-table-alist)
-  (:import-from :metabang.cl-containers :set-container :insert-item :find-item)
+  (:import-from :metabang.cl-containers :set-container :stack-container :insert-item :find-item :empty! :pop-item :insert-list :empty-p :pop-item)
   (:import-from :cl-heap :decrease-key :fibonacci-heap :pop-heap :add-to-heap)
   (:export #:part-1 #:part-2))
 
@@ -15,8 +15,13 @@
   node-id coordinate room-for room-pair neighbors)
 
 (defstruct (board (:conc-name nil))
-  (positions 0 :type fixnum) (energy 0 :type fixnum) (heuristic 0 :type fixnum) queue-node)
+  (positions 0 :type fixnum) (energy 0 :type fixnum) (heuristic 0 :type fixnum) queue-index)
 
+(defun board-key (the-board &optional val)
+  (if val
+      (setf (heuristic the-board) val)
+      (heuristic the-board)))
+  
 (defparameter *byte-specs*
   (plist-hash-table (list :a (vector (byte 8 0) (byte 8 8))
                           :b (vector (byte 8 16) (byte 8 24))
@@ -218,9 +223,83 @@
                               do (sort val #'<)
                               finally (return tmp-table)))))
 
-(defun schedule-moves-from-position (priority-queue visited packed-position)
-  (let ((unpacked (unpack-positions packed-position))
-        (occupied (packed->occupied-set packed-position)))
-    
+(defvar *tmp-positions-table* (make-positions-table))
 
-  ))
+(defun copy->tmp-table (unpacked)
+  (loop for key being the hash-keys in unpacked using (hash-value vec)
+        do (loop with copy-to = (gethash key *tmp-positions-table*)
+                 for copy-idx from 0 below 2
+                 do (setf (aref copy-to copy-idx) (aref vec copy-idx)))))
+  
+
+(defun next-board (prev unpacked letter idx new-id distance)
+  (copy->tmp-table unpacked)
+  (let ((target-vec (gethash letter *tmp-positions-table*)))
+    (set (aref target-vec idx) new-id)
+    (sort target-vec #'<)
+    
+    (make-board :positions (pack-positions *tmp-positions-table*)
+                :energy (+ (energy prev) (* distance (gethash letter *energies*)))
+                :heuristic (estimated-remaining-cost *tmp-positions-table*))))
+
+(defvar *priority-queue* nil)
+(defvar *visited* nil)
+
+(defun add-next-board (the-board)
+  (let* ((pos (positions the-board))
+         (already (gethash pos *visited*)))
+
+    (cond ((not already)
+           (setf (queue-index the-board) (second (multiple-value-list (add-to-heap *priority-queue* the-board))))
+           (setf (gethash pos *visited*) the-board))
+
+          ((and already (< (heuristic the-board) (heuristic already)))
+           (setf (energy already) (energy the-board))
+           (decrease-key *priority-queue* (queue-index already) (heuristic the-board))))))
+          
+(defun schedule-moves-from-position (current-board)
+  (loop with packed = (positions current-board)
+        with unpacked = (unpack-positions packed)
+        with occupied = (packed->occupied-set packed)
+        with visited = (make-instance 'set-container)
+        with stack = (make-instance 'stack-container)
+        for letter being the hash-keys in unpacked using (hash-value id-vec)
+        do (labels ((add-neighbors (node current-distance)
+                      (dolist (neighbor-id (neighbors node))
+                        (if (not (find-item visited neighbor-id))
+                            (insert-item stack (cons neighbor-id (1+ current-distance))))))
+
+                    (reset-tracking (id)
+                      (empty! visited)
+                      (insert-item visited id)
+                      (add-neighbors (gethash id *nodes-table*) 0)))
+             
+             (loop for idx from 0 below 2
+                   for start-id across id-vec
+                   do (progn
+                        (reset-tracking start-id)
+
+                        (loop while (not (empty-p stack))
+                              do (destructuring-bind (next-id . distance) (pop-item stack)
+                                   (insert-item visited next-id)
+                                   (if (not (find-item occupied next-id))
+                                       (let ((next-node (gethash next-id *nodes-table*)))
+                                         (add-neighbors next-node distance)
+                                         
+                                         (if (legal-move-p letter idx unpacked next-id)
+                                             (add-next-board (next-board current-board unpacked letter idx next-id distance))))))))))))
+
+(defun part-1 ()
+  (let* ((input-list (read-day-file "23"))
+         (unpacked (extract-positions input-list))
+         (start-board (make-board :positions (pack-positions unpacked) :energy 0
+                                  :heuristic (estimated-remaining-cost unpacked)))
+         (*visited* (make-hash-table))
+         (*priority-queue* (make-instance 'fibonacci-heap :key #'board-key)))
+    (add-next-board start-board)
+
+    (loop for next-board = (pop-heap *priority-queue*) then (pop-heap *priority-queue*)
+          while (not (finished-p (positions next-board)))
+          do (schedule-moves-from-position next-board)
+          finally (return next-board))))
+         
