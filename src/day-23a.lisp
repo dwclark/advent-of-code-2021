@@ -19,8 +19,8 @@
 
 (defun board-key (the-board &optional val)
   (if val
-      (setf (heuristic the-board) val)
-      (heuristic the-board)))
+      (setf (energy the-board) val)
+      (energy the-board)))
   
 (defparameter *byte-specs*
   (plist-hash-table (list :a (vector (byte 8 0) (byte 8 8))
@@ -100,7 +100,8 @@
   (loop with table = (make-positions-table)
         for sym being the hash-keys in *byte-specs* using (hash-value specs)
         do (loop for spec across specs
-                 do (vector-push (ldb spec num) (gethash sym table)))
+                 for idx from 0 below 2
+                 do (setf (aref (gethash sym table) idx) (ldb spec num)))
         finally (return table)))
 
 (defparameter *finished*
@@ -120,10 +121,7 @@
           :initial-value (make-hash-table)))
 
 (defun make-positions-table ()
-  (plist-hash-table (list :a (make-array 2 :fill-pointer 0)
-                          :b (make-array 2 :fill-pointer 0)
-                          :c (make-array 2 :fill-pointer 0)
-                          :d (make-array 2 :fill-pointer 0))))
+  (plist-hash-table (list :a (make-array 2) :b (make-array 2) :c (make-array 2) :d (make-array 2))))
 
 (defun manhattan (n1 n2)
   (flet ((row (n) (car (coordinate n)))
@@ -211,6 +209,7 @@
 (defun extract-positions (arg)
   (loop with lst = (cdr arg)
         with tmp-table = (make-positions-table)
+        with indexes = (plist-hash-table (list :a -1 :b -1 :c -1 :d -1))
         for str in lst
         for row from 0 to (length lst)
         do (loop for ch across str
@@ -218,24 +217,25 @@
                  do (let ((sym (intern (make-string 1 :initial-element ch) :keyword))
                           (id (parse-integer (format nil "~A~A" row col))))
                       (if (member sym '(:a :b :c :d))
-                          (vector-push id (gethash sym tmp-table)))))
+                          (setf (aref (gethash sym tmp-table) (incf (gethash sym indexes))) id))))
         finally (return (loop for key being the hash-keys in tmp-table using (hash-value val)
                               do (sort val #'<)
                               finally (return tmp-table)))))
-
+  
 (defvar *tmp-positions-table* (make-positions-table))
 
 (defun copy->tmp-table (unpacked)
   (loop for key being the hash-keys in unpacked using (hash-value vec)
-        do (loop with copy-to = (gethash key *tmp-positions-table*)
-                 for copy-idx from 0 below 2
-                 do (setf (aref copy-to copy-idx) (aref vec copy-idx)))))
+        for target = (gethash key *tmp-positions-table*) then (gethash key *tmp-positions-table*)
+        do (setf (aref target 0) (aref vec 0)
+                 (aref target 1) (aref vec 1))))
   
-
 (defun next-board (prev unpacked letter idx new-id distance)
   (copy->tmp-table unpacked)
+  ;(format t "~A~%" (hash-table-alist unpacked))
+  ;(format t "~A~%" (hash-table-alist *tmp-positions-table*))
   (let ((target-vec (gethash letter *tmp-positions-table*)))
-    (set (aref target-vec idx) new-id)
+    (setf (aref target-vec idx) new-id)
     (sort target-vec #'<)
     
     (make-board :positions (pack-positions *tmp-positions-table*)
@@ -253,11 +253,13 @@
            (setf (queue-index the-board) (second (multiple-value-list (add-to-heap *priority-queue* the-board))))
            (setf (gethash pos *visited*) the-board))
 
-          ((and already (< (heuristic the-board) (heuristic already)))
-           (setf (energy already) (energy the-board))
-           (decrease-key *priority-queue* (queue-index already) (heuristic the-board))))))
+          ((and already (< (energy the-board) (energy already)))
+           (decrease-key *priority-queue* (queue-index already) (energy the-board))))))
           
 (defun schedule-moves-from-position (current-board)
+  ;(format t "in scheduled-moves-from-position: packed: ~A, energy: ~A, heuristic: ~A~%"
+  ;        (positions current-board) (energy current-board) (heuristic current-board))
+  
   (loop with packed = (positions current-board)
         with unpacked = (unpack-positions packed)
         with occupied = (packed->occupied-set packed)
@@ -277,15 +279,18 @@
              (loop for idx from 0 below 2
                    for start-id across id-vec
                    do (progn
+                        ;(format t "start-id: ~A~%" start-id)
                         (reset-tracking start-id)
 
                         (loop while (not (empty-p stack))
                               do (destructuring-bind (next-id . distance) (pop-item stack)
                                    (insert-item visited next-id)
-                                   (if (not (find-item occupied next-id))
+                                   (if (and (not (find-item occupied next-id))
+                                            (not (final-place-p letter idx id-vec)))
                                        (let ((next-node (gethash next-id *nodes-table*)))
+                                         ;(format t "next-id: ~A next-node: ~A~%" next-id next-node)
                                          (add-neighbors next-node distance)
-                                         
+
                                          (if (legal-move-p letter idx unpacked next-id)
                                              (add-next-board (next-board current-board unpacked letter idx next-id distance))))))))))))
 
@@ -301,5 +306,5 @@
     (loop for next-board = (pop-heap *priority-queue*) then (pop-heap *priority-queue*)
           while (not (finished-p (positions next-board)))
           do (schedule-moves-from-position next-board)
-          finally (return next-board))))
+          finally (return (energy next-board)))))
          

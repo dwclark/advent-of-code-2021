@@ -30,7 +30,6 @@
   (let* ((original (plist-hash-table (list :a (vector 1 2) :b (vector 3 4) :c (vector 5 6) :d (vector 7 8))))
          (packed (pack-positions original)) 
          (unpacked (unpack-positions packed)))
-    (format t "~A~%" packed)
     (loop for key in (list :a :b :c :d)
           do (assert (equalp (gethash key original) (gethash key unpacked))))))
     
