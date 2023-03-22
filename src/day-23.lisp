@@ -2,256 +2,258 @@
   (:use :cl)
   (:import-from :utils :read-day-file)
   (:import-from :alexandria :alist-hash-table :define-constant :hash-table-keys :plist-hash-table
-                :hash-table-values :copy-hash-table :maphash-keys :rcurry :hash-table-alist)
+   :hash-table-values :copy-hash-table :maphash-keys :rcurry :hash-table-alist)
+  (:import-from :metabang.cl-containers :set-container :stack-container :insert-item :find-item :empty! :pop-item :insert-list :empty-p :pop-item)
+  (:import-from :cl-heap :decrease-key :fibonacci-heap :pop-heap :add-to-heap)
   (:export #:part-1 #:part-2))
+
+(declaim (optimize (debug 0)))
 
 (in-package :day-23)
 
-(defstruct (tracking (:conc-name nil))
-  id moves (distance 0))
+(defparameter *letters* '(:a :b :c :d))
+(defparameter *energies* (plist-hash-table (list :a 1 :b 10 :c 100 :d 1000)))
+(defparameter *finished-positions*
+  (plist-hash-table (list :a (vector 13 23 33 43) :b (vector 15 25 35 45)
+                          :c (vector 17 27 37 47) :d (vector 19 29 39 49))))
 
-(define-constant +room-columns+ (list :a 2 :b 4 :c 6 :d 8) :test #'equal)
+(defparameter *hash-bit-size* (integer-length most-positive-fixnum))
+(defparameter *hash-bit-spec* (byte *hash-bit-size* 0))
 
-(defun room-column (s)
-  (getf +room-columns+ s))
+(defstruct board a b c d energy queue-node)
 
-(define-constant h0 (cons 0 0) :test #'equal)
-(define-constant h1 (cons 0 1) :test #'equal)
-(define-constant h2 (cons 0 2) :test #'equal)
-(define-constant h3 (cons 0 3) :test #'equal)
-(define-constant h4 (cons 0 4) :test #'equal)
-(define-constant h5 (cons 0 5) :test #'equal)
-(define-constant h6 (cons 0 6) :test #'equal)
-(define-constant h7 (cons 0 7) :test #'equal)
-(define-constant h8 (cons 0 8) :test #'equal)
-(define-constant h9 (cons 0 9) :test #'equal)
-(define-constant h10 (cons 0 10) :test #'equal)
-(define-constant a1 (cons 1 (getf +room-columns+ :a)) :test #'equal)
-(define-constant a2 (cons 2 (getf +room-columns+ :a)) :test #'equal)
-(define-constant b1 (cons 1 (getf +room-columns+ :b)) :test #'equal)
-(define-constant b2 (cons 2 (getf +room-columns+ :b)) :test #'equal)
-(define-constant c1 (cons 1 (getf +room-columns+ :c)) :test #'equal)
-(define-constant c2 (cons 2 (getf +room-columns+ :c)) :test #'equal)
-(define-constant d1 (cons 1 (getf +room-columns+ :d)) :test #'equal)
-(define-constant d2 (cons 2 (getf +room-columns+ :d)) :test #'equal)
+(defun board-with-rooms (room-size)
+  (make-board :a (make-array room-size :fill-pointer 0)
+              :b (make-array room-size :fill-pointer 0)
+              :c (make-array room-size :fill-pointer 0)
+              :d (make-array room-size :fill-pointer 0)
+              :energy 0))
 
-(defparameter *board*
-  (plist-hash-table (list h0 :hall h1 :hall h2 :entry h3 :hall
-                          h4 :entry h5 :hall h6 :entry h7 :hall
-                          h8 :entry h9 :hall h10 :hall
-                          a1 :room a2 :room b1 :room b2 :room
-                          c1 :room c2 :room d1 :room d2 :room) :test #'equal))
+(defun letter->positions (the-board letter)
+  (ecase letter (:a (board-a the-board))
+         (:b (board-b the-board))
+         (:c (board-c the-board))
+         (:d (board-d the-board))))
 
-(defun room-contents (sym track)
-  (ecase sym
-    (:a (list (gethash a1 track) (gethash a2 track)))
-    (:b (list (gethash b1 track) (gethash b2 track)))
-    (:c (list (gethash c1 track) (gethash c2 track)))
-    (:d (list (gethash d1 track) (gethash d2 track)))))
+(defun next-board (prev letter new-idx new-cons distance)
+  (labels ((sort-cons (c1 c2)
+             (or (< (car c1) (car c2))
+                 (< (cdr c1) (cdr c2))))
 
-(defun hallway-p (loc)
-  (eq :hall (gethash loc *board*)))
+           (next-array (for-letter)
+             (let ((prev-positions (letter->positions prev letter)))
+               (if (not (eq letter for-letter))
+                   prev-positions
+                   (loop with new-array = (make-array (length prev-positions) :fill-pointer 0)
+                         for element across prev-positions
+                         for idx from 0 below (length prev-positions)
+                         do (vector-push (if (= idx new-idx) new-cons (aref prev-positions idx)) new-array)
+                         finally (return (sort new-array #'sort-cons)))))))
+                                           
+    (make-board :a (next-array :a)
+                :b (next-array :b)
+                :c (next-array :c)
+                :d (next-array :d)
+                :energy (+ (board-energy prev) (* distance (gethash letter distance))))))
 
-(defun room-p (loc)
-  (eq :room (gethash loc *board*)))
+(defun normalize-position (the-board letter)
+  (sort (letter->positions the-board letter)
+        #'(lambda (c1 c2)
+            (if (< (car c1) (car c2))
+                t
+                (< (cdr c1) (cdr c2))))))
 
-(defun legal-from-room (loc track)
-  (let ((ret nil))
-    (if (and (= 2 (car loc)) (gethash (cons 1 (cdr loc)) track))
-        (return-from legal-from-room ret))
+(defun board-equal (b1 b2)
+  (and (equalp (board-a b1) (board-a b2))
+       (equalp (board-b b1) (board-b b2))
+       (equalp (board-c b1) (board-c b2))
+       (equalp (board-d b1) (board-d b2))))
 
-    (flet ((add-if-legal (new-loc)
-             (if (gethash new-loc track)
-                 nil
-                 (progn
-                   (if (not (eq :entrance (gethash new-loc *board*)))
-                       (push new-loc ret))
-                   t))))
-      
-      (loop for h from (1+ (cdr loc)) to 10
-            do (let ((new-loc (cons 0 h)))
-                 (if (not (add-if-legal new-loc))
-                     (return))))
-
-      (loop for h from (1- (cdr loc)) downto 0
-            do (let ((new-loc (cons 0 h)))
-                 (if (not (add-if-legal new-loc))
-                     (return)))))
-    ret))
-
-(defun legal-from-hall (loc track)
-  (let ((col (cdr loc))
-        (dest-col (room-column (id (gethash loc track)))))
-
-    (if (< col dest-col)
-        (loop for i from (1+ col) to dest-col
-              do (if (gethash (cons 0 i) track)
-                     (return-from legal-from-hall nil)))
-        (loop for i from (1- col) downto dest-col
-              do (if (gethash (cons 0 i) track)
-                     (return-from legal-from-hall nil))))
-
-    (if (gethash (cons 1 dest-col) track)
-        (return-from legal-from-hall nil))
-
-    (let ((in-cell-2 (gethash (cons 2 dest-col) track)))
-      (if (and (not (null in-cell-2))
-               (not (eq (id in-cell-2) (id (gethash loc track)))))
-          (return-from legal-from-hall nil)))
-
-    ;;should be able to enter a cell now
-    (if (not (gethash (cons 2 dest-col) track))
-        (list (cons 2 dest-col))
-        (list (cons 1 dest-col)))))
-
-(defun legal-moves (loc track)
-  (if (final-location-p loc track)
-      (return-from legal-moves nil))
-  
-  (if (= 3 (length (moves (gethash loc track))))
-      (return-from legal-moves nil))
-  
-  (if (hallway-p loc)
-      (legal-from-hall loc track)
-      (legal-from-room loc track)))
-
-(defun move (loc new-loc track)
-  (let* ((ret (make-hash-table :test #'equal))
-         (current (gethash loc track))
-         (new-inst (copy-tracking current)))
-    (setf (distance new-inst) (+ (distance current) (manhattan loc new-loc)))
-    (setf (moves new-inst) (cons new-loc (moves new-inst)))
-    (flet ((k-v (k v)
-             (if (equal k loc)
-                 (setf (gethash new-loc ret) new-inst)
-                 (setf (gethash k ret) (copy-tracking v)))))
-      (maphash #'k-v track))
-    ret))
-
-(defun manhattan (p1 p2)
-  (+ (abs (- (car p1) (car p2))) (abs (- (cdr p1) (cdr p2)))))
-
-(defun cost (tr)
-  (* (distance tr)
-     (ecase (id tr)
-       (:a 1)
-       (:b 10)
-       (:c 100)
-       (:d 1000))))
-
-(defun total-cost (list-track)
-  (reduce #'+ (mapcar #'cost list-track)))
-
-(defun solved-p (track)
-  (every (rcurry #'room-correct-p track) (hash-table-keys track)))
-
-(defun room-correct-p (loc track)
-  (and (room-p loc)
-       (= (cdr loc) (room-column (id (gethash loc track))))))
-
-(defun final-location-p (loc track)
-  (let* ((val (gethash loc track))
-         (sym (id val))
-         (col (room-column sym)))
-    (and (= col (cdr loc))
-         (or (equal (cons 2 col) loc)
-             (let ((other (gethash (cons 2 col) track)))
-               (and other (eq sym (id other))))))))
-
-(defvar *solution* most-positive-fixnum)
-
-(defun solve (track)
-  (let ((latest-cost (total-cost (hash-table-values track))))
-    (if (< *solution* latest-cost)
-        (return-from solve nil))
-    
-    (if (solved-p track)
-        (if (< latest-cost *solution*)
-            (progn
-              (setf *solution* latest-cost)
-              (format t "found solution ~A~%" *solution*)))
-        (maphash-keys #'(lambda (loc)
-                          (let ((moves (legal-moves loc track)))
-                                        ;(format t "~A -> ~A~%" loc moves)
-                            (loop for new-loc in moves
-                                  do (solve (move loc new-loc track)))))
-                      track))))
-
-(defun build-tracking (&rest plist)
-  (loop with ret = (make-hash-table :test #'equal)
-        for (loc sym) on plist by #'cddr
-        do (setf (gethash loc ret) (make-tracking :id sym :moves (list loc) :distance 0))
+(defun board-hash (b)
+  (loop with ret = 0
+        for letter in *letters*
+        do (loop for (row . col) across (letter->positions b letter)
+                 do (progn
+                      (incf ret (+ (* 31 ret) row))
+                      (setf ret (ldb *hash-bit-spec* ret))
+                      (incf ret (+ (* 31 ret) col))
+                      (setf ret (ldb *hash-bit-spec* ret))))
         finally (return ret)))
 
-(defun part-1 ()
-  (let ((*solution* most-positive-fixnum))
-    (solve (build-tracking a1 :b a2 :a b1 :c b2 :d c1 :b c2 :c d1 :d d2 :a))
-    (if *solution*
-        (total-cost (hash-table-values *solution*))
+(defun board-key (b &optional new-val)
+  (if new-val
+      (setf (board-energy b) new-val)
+      (board-energy b)))
+
+(defun board->occupied (b)
+  (loop with ret = (make-instance 'set-container :test #'equal)
+        for letter in *letters*
+        do (loop for cell across (letter->positions b letter)
+                 do (insert-item ret cell))
+        finally (return ret)))
+
+(defun hall-p (id)
+  (= 1 (car id)))
+
+(defun room-p (id)
+  (< 1 (cdr id)))
+
+(defun stop-p (id)
+  (member id '((1 . 3) (1 . 5) (1. 7) (1 . 9)) :test #'equal))
+
+(defun finished-p (the-board)
+  (loop for letter in *letters*
+        do (let ((should-be (gethash letter *finished-positions*))
+                 (on-board (letter->positions the-board letter)))
+             (loop for idx from 0 below (length on-board)
+                   do (if (not (= (aref should-be idx) (aref on-board idx)))
+                          (return-from finished-p nil))))
+        finally (return t)))
+
+(defun final-place-p (the-board letter idx)
+  (let* ((current-positions (letter->positions the-board letter))
+         (finished-positions (gethash letter *finished-positions*)))
+
+    (loop for i from idx below (length current-positions)
+          do (if (not (equal (aref finished-positions i)
+                             (aref current-positions i)))
+                 (return-from final-place-p nil))
+          finally (return t))))
+
+(defun target-for-room-p (the-board letter to-id)
+  (let* ((current-positions (letter->positions the-board letter))
+         (finished-positions (gethash letter *finished-positions*))
+         (target-idx (position to-id finished-positions :test #'equal)))
+    (if target-idx
+        (loop for i from target-idx below (length current-positions)
+              do (if (not (equal (aref finished-positions i)
+                                 (aref current-positions i)))
+                     (return-from target-for-room-p nil))
+              finally (return t))
         nil)))
 
-(defun test-room-column ()
-  (assert (= 4 (room-column :b)))
-  (assert (= 8 (room-column :d))))
+(defun legal-move-p (the-board letter idx to-id)
+  (let* ((current-positions (letter->positions the-board letter))
+         (from-id (aref current-positions idx)))
 
-(defun test-solved-p ()
-  (assert (solved-p (build-tracking a1 :a b1 :b)))
-  (assert (solved-p (build-tracking a1 :a a2 :a b1 :b b2 :b c1 :c c2 :c d1 :d d2 :d)))
-  (assert (not (solved-p (build-tracking a1 :a a2 :a b1 :b b2 :b c1 :c c2 :d d1 :d d2 :d)))))
+    (if (and (hall-p from-id)
+             (hall-p to-id))
+        (return-from legal-move-p nil))
 
-(defun test-total-cost ()
-  (assert (= (+ 10 (* 7 1000) (* 8 100))
-             (total-cost (list (make-tracking :id :a :distance 10) (make-tracking :id :d :distance 7)
-                               (make-tracking :id :c :distance 8))))))
+    (if (and (room-p from-id)
+             (hall-p to-id))
+        (if (and (not (stop-p to-id))
+                 (not (final-place-p the-board letter idx)))
+            (return-from legal-move-p t)
+            (return-from legal-move-p nil)))
 
-(defun test-final-location-p ()
-  (assert (final-location-p a1 (build-tracking a1 :a a2 :a)))
-  (assert (not (final-location-p a1 (build-tracking a1 :a))))
-  (assert (not (final-location-p a1 (build-tracking a1 :b a2 :a))))
-  (assert (final-location-p a2 (build-tracking a1 :gb a2 :a))))
+    (if (and (hall-p from-id)
+             (room-p to-id))
+        (if (target-for-room-p the-board letter to-id)
+            (return-from legal-move-p t)
+            (return-from legal-move-p nil)))
 
-(defun test-move ()
-  (let* ((track (build-tracking a1 :a b1 :b))
-         (mov-1 (move a1 h0 track))
-         (mov-2 (move b1 h10 mov-1)))
-    (assert (not (gethash a1 mov-1)))
-    (assert (not (gethash b1 mov-2)))
-    (assert (and (gethash h0 mov-2) (gethash h10 mov-2)))
-    (assert (= 3 (distance (gethash h0 mov-1))))
-    (assert (= 7 (distance (gethash h10 mov-2))))))
+    (if (and (room-p from-id)
+             (room-p to-id))
+        (if (and (not (final-place-p the-board letter idx))
+                 (target-for-room-p the-board letter to-id))
+            (return-from legal-move-p t)
+            (return-from legal-move-p nil)))
 
-(defun matches-locations (moved &rest expected)
-  (loop for loc in expected
-        do (assert (member loc moved :test #'equal))))
+    (error "should not have arrived here")))
 
-(defun test-legal-room-moves ()
-  (let* ((legal-1 (legal-moves a1 (build-tracking a1 :a)))
-         (legal-2 (legal-moves a2 (build-tracking a2 :a)))
-         (legal-3 (legal-moves a2 (build-tracking a2 :b)))
-         (legal-4 (legal-moves d1 (build-tracking d1 :a h7 :d)))
-         (legal-5 (legal-moves d1 (build-tracking d1 :a h3 :d)))
-         (legal-6 (legal-moves a2 (build-tracking a1 :a a2 :b))))
-      
-    (matches-locations legal-1 h0 h1 h3 h5 h7 h9 h10)
-    (assert (null legal-2))
-    (matches-locations legal-3 h0 h1 h3 h5 h7 h9 h10)
-    (matches-locations legal-4 h9 h10)
-    (matches-locations legal-5 h5 h7 h9 h10)
-    (assert (null legal-6))))
 
-(defun test-legal-hall-moves ()
-  (matches-locations (legal-moves h0 (build-tracking h0 :a)) a2)
-  (matches-locations (legal-moves h0 (build-tracking h0 :a a2 :a)) a1)
-  (assert (null (legal-moves h0 (build-tracking a2 :a h0 :a h1 :b))))
-  (assert (null (legal-moves h3 (build-tracking h3 :c h5 :d))))
-  (matches-locations (legal-moves h5 (build-tracking h5 :c h7 :d)) c2)
-  (matches-locations (legal-moves h7 (build-tracking h7 :c h5 :d)) c2)
-  (matches-locations (legal-moves h7 (build-tracking h7 :c h5 :d c2 :c)) c1))
+(defun parse-grid-board (list-strings)
+  (loop with row-size = (length list-strings)
+        with col-size = (length (first list-strings))
+        with the-grid = (make-hash-table :test #'equal)
+        with the-board = (board-with-rooms (- row-size 3))
+        for row-idx from 0 below row-size
+        do (labels ((parse-item (r c)
+                      (if (and (<= 0 r) (< r row-size)
+                               (<= 0 c) (< c col-size))
+                          (let ((item (elt (elt list-strings r) c)))
+                            (if (not (eql #\# item))
+                                item
+                                nil))
+                          nil))
 
-(defun test-all ()
-  (test-room-column)
-  (test-solved-p)
-  (test-total-cost)
-  (test-final-location-p)
-  (test-move)
-  (test-legal-room-moves))
+                    (add-neighbor (ary r c)
+                      (if (parse-item r c)
+                          (vector-push (cons r c) ary)))
+
+                    (parse-neighbors (r c)
+                      (let ((ret (make-array 3 :fill-pointer 0)))
+                        (add-neighbor ret (1+ r) c)
+                        (add-neighbor ret (1- r) c)
+                        (add-neighbor ret r (1+ c))
+                        (add-neighbor ret r (1- c))
+                        ret)))
+             
+             (loop for col-idx from 0 below col-size
+                   do (let* ((item (parse-item row-idx col-idx))
+                             (sym (if item (intern (make-string 1 :initial-element item) :keyword) nil)))
+                        (if item
+                            (progn 
+                              (setf (gethash (cons row-idx col-idx) the-grid) (parse-neighbors row-idx col-idx))
+                              (if (member sym *letters*)
+                                  (vector-push (cons row-idx col-idx) (letter->positions the-board sym))))))))
+        finally (return (values the-grid the-board))))
+
+(defvar *grid* nil)
+(defvar *priority-queue* nil)
+(defvar *visited* nil)
+
+(defun add-next-board (the-board)
+  (let ((already (gethash the-board *visited*)))
+    
+    (cond ((not already)
+           (setf (board-queue-node the-board) (second (multiple-value-list (add-to-heap *priority-queue* the-board))))
+           (setf (gethash the-board *visited*) the-board))
+
+          ((and already (< (board-energy the-board) (board-energy already)))
+           (decrease-key *priority-queue* (board-queue-node already) (board-energy the-board))))))
+
+(defun schedule-moves-from-position (current-board)
+  (loop with occupied = (board->occupied current-board)
+        with visited = (make-instance 'set-container :test #'equal)
+        with stack = (make-instance 'stack-container)
+        for letter in *letters*
+        do (labels ((add-neighbors (id current-distance)
+                      (loop for neighbor-id across (gethash id *grid*)
+                            do (if (not (find-item visited neighbor-id))
+                                   (insert-item stack (cons neighbor-id (1+ current-distance))))))
+                    
+                    (reset-tracking (id)
+                      (empty! visited)
+                      (insert-item visited id)
+                      (add-neighbors id 0)))
+             
+             (loop with start-positions = (letter->positions current-board letter)
+                   for idx from 0 below (length start-positions)
+                   for start-id across start-positions
+                   do (progn
+                        (reset-tracking start-id)
+
+                        (loop while (not (empty-p stack))
+                              do (destructuring-bind (next-id . distance) (pop-item stack)
+                                   (insert-item visited next-id)
+                                   (if (and (not (find-item occupied next-id))
+                                            (not (final-place-p current-board letter idx)))
+                                       (progn
+                                         (add-neighbors next-id distance)
+
+                                         (if (legal-move-p current-board letter idx next-id)
+                                             (add-next-board (next-board current-board letter idx next-id distance))))))))))))
+
+(defun part-1 ()
+  (multiple-value-bind (the-grid the-board) (parse-grid-board (read-day-file "23"))
+    (let ((*grid* the-grid)
+          (*visited* (make-hash-table :test #'board-equal :hash-function #'board-hash))
+          (*priority-queue* (make-instance 'fibonacci-heap :key #'board-key)))
+      (add-next-board the-board)
+
+      (loop for next-board = (pop-heap *priority-queue*) then (pop-heap *priority-queue*)
+            while (not (finished-p next-board))
+            do (schedule-moves-from-position next-board)
+            finally (return (board-energy next-board))))))
