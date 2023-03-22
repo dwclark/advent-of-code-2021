@@ -35,20 +35,39 @@
          (:c (board-c the-board))
          (:d (board-d the-board))))
 
-(defun next-board (prev letter new-idx new-cons distance)
-  (labels ((sort-cons (c1 c2)
-             (or (< (car c1) (car c2))
-                 (< (cdr c1) (cdr c2))))
+(defun cons< (c1 c2)
+  (let ((diff (- (car c1) (car c2))))
+    (cond ((< 0 diff) (return-from cons< nil))
+          ((< diff 0) (return-from cons< t))))
 
-           (next-array (for-letter)
+  (let ((diff (- (cdr c1) (cdr c2))))
+    (cond ((< 0 diff) (return-from cons< nil))
+          ((< diff 0) (return-from cons< t))
+          (t nil))))
+
+(defun print-board (grid the-board)
+  (let* ((max-row (+ 2 (first (sort (remove-duplicates (mapcar #'car (hash-table-keys grid))) #'>))))
+         (ary-grid (make-array (list max-row 13) :initial-element #\#)))
+    (loop for cell in (hash-table-keys grid)
+          do (setf (aref ary-grid (car cell) (cdr cell)) #\.))
+    (loop for letter in *letters*
+          do (loop for cell across (letter->positions the-board letter)
+                   do (setf (aref ary-grid (car cell) (cdr cell)) letter)))
+    (loop for row from 0 below (array-dimension ary-grid 0)
+          do (loop for col from 0 below (array-dimension ary-grid 1)
+                   do (format t "~A" (aref ary-grid row col))
+                   finally (format t "~%" )))))
+
+(defun next-board (prev letter idx new-cons distance)
+  (labels ((next-array (for-letter)
              (let ((prev-positions (letter->positions prev for-letter)))
                (if (not (eq letter for-letter))
                    prev-positions
                    (loop with new-array = (make-array (length prev-positions) :fill-pointer 0)
                          for element across prev-positions
-                         for idx from 0 below (length prev-positions)
-                         do (vector-push (if (= idx new-idx) new-cons (aref prev-positions idx)) new-array)
-                         finally (return (sort new-array #'sort-cons)))))))
+                         for iter-idx from 0 below (length prev-positions)
+                         do (vector-push (if (= iter-idx idx) new-cons (aref prev-positions iter-idx)) new-array)
+                         finally (return (sort new-array #'cons<)))))))
                                            
     (make-board :a (next-array :a)
                 :b (next-array :b)
@@ -116,7 +135,7 @@
          (finished-positions (gethash letter *finished-positions*))
          (target-idx (position to-id finished-positions :test #'equal)))
     (if target-idx
-        (loop for i from target-idx below (length current-positions)
+        (loop for i from (1+ target-idx) below (length current-positions)
               do (if (not (equal (aref finished-positions i)
                                  (aref current-positions i)))
                      (return-from target-for-room-p nil))
@@ -164,7 +183,7 @@
                       (if (and (<= 0 r) (< r row-size)
                                (<= 0 c) (< c col-size))
                           (let ((item (elt (elt list-strings r) c)))
-                            (if (not (eql #\# item))
+                            (if (and (not (eql #\# item)) (not (eql #\Space item)))
                                 item
                                 nil))
                           nil))
@@ -181,7 +200,7 @@
                         (add-neighbor ret r (1- c))
                         ret)))
              
-             (loop for col-idx from 0 below col-size
+             (loop for col-idx from 0 below (setf col-size (length (elt list-strings row-idx)))
                    do (let* ((item (parse-item row-idx col-idx))
                              (sym (if item (intern (make-string 1 :initial-element item) :keyword) nil)))
                         (if item
@@ -242,6 +261,7 @@
     (let ((*grid* grid)
           (*visited* (make-hash-table :test #'board-equal :hash-function #'board-hash))
           (*priority-queue* (make-instance 'fibonacci-heap :key #'board-key)))
+      (format t "~A~%" (hash-table-alist *grid*))
       (add-next-board start)
 
       (loop for next = (pop-heap *priority-queue*) then (pop-heap *priority-queue*)
