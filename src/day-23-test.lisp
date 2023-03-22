@@ -164,5 +164,4 @@
                                :C #((3 . 5) (4 . 7) (4 . 9) (5 . 7))
                                :D #((1 . 11) (3 . 3) (4 . 3) (5 . 5)))))
     
-    (assert (legal-move-p the-board :c 0 '(3 . 7)))
-))
+    (assert (legal-move-p the-board :c 0 '(3 . 7)))))

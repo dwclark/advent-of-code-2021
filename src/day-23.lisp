@@ -136,8 +136,7 @@
          (target-idx (position to-id finished-positions :test #'equal)))
     (if target-idx
         (loop for i from (1+ target-idx) below (length current-positions)
-              do (if (not (equal (aref finished-positions i)
-                                 (aref current-positions i)))
+              do (if (not (find (aref finished-positions i) current-positions :test #'equal))
                      (return-from target-for-room-p nil))
               finally (return t))
         nil)))
