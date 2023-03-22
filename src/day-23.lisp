@@ -7,20 +7,20 @@
   (:import-from :cl-heap :decrease-key :fibonacci-heap :pop-heap :add-to-heap)
   (:export #:part-1 #:part-2))
 
-(declaim (optimize (debug 0)))
+(declaim (optimize (debug 3)))
 
 (in-package :day-23)
 
 (defparameter *letters* '(:a :b :c :d))
 (defparameter *energies* (plist-hash-table (list :a 1 :b 10 :c 100 :d 1000)))
 (defparameter *finished-positions*
-  (plist-hash-table (list :a (vector 13 23 33 43) :b (vector 15 25 35 45)
-                          :c (vector 17 27 37 47) :d (vector 19 29 39 49))))
+  (plist-hash-table (list :a (vector '(2 . 3) '(3 . 3) '(4 . 3) '(5 . 3)) :b (vector '(2 . 5) '(3 . 5) '(4 . 5) '(5 . 5))
+                          :c (vector '(2 . 7) '(3 . 7) '(4 . 7) '(5 . 7)) :d (vector '(2 . 9) '(3 . 9) '(4 . 9) '(5 . 9)))))
 
 (defparameter *hash-bit-size* (integer-length most-positive-fixnum))
 (defparameter *hash-bit-spec* (byte *hash-bit-size* 0))
 
-(defstruct board a b c d energy queue-node)
+(defstruct board a b c d (energy 0) queue-node)
 
 (defun board-with-rooms (room-size)
   (make-board :a (make-array room-size :fill-pointer 0)
@@ -41,7 +41,7 @@
                  (< (cdr c1) (cdr c2))))
 
            (next-array (for-letter)
-             (let ((prev-positions (letter->positions prev letter)))
+             (let ((prev-positions (letter->positions prev for-letter)))
                (if (not (eq letter for-letter))
                    prev-positions
                    (loop with new-array = (make-array (length prev-positions) :fill-pointer 0)
@@ -54,14 +54,7 @@
                 :b (next-array :b)
                 :c (next-array :c)
                 :d (next-array :d)
-                :energy (+ (board-energy prev) (* distance (gethash letter distance))))))
-
-(defun normalize-position (the-board letter)
-  (sort (letter->positions the-board letter)
-        #'(lambda (c1 c2)
-            (if (< (car c1) (car c2))
-                t
-                (< (cdr c1) (cdr c2))))))
+                :energy (+ (board-energy prev) (* distance (gethash letter *energies*))))))
 
 (defun board-equal (b1 b2)
   (and (equalp (board-a b1) (board-a b2))
@@ -74,9 +67,7 @@
         for letter in *letters*
         do (loop for (row . col) across (letter->positions b letter)
                  do (progn
-                      (incf ret (+ (* 31 ret) row))
-                      (setf ret (ldb *hash-bit-spec* ret))
-                      (incf ret (+ (* 31 ret) col))
+                      (setf ret (+ (* 31 (+ (* 31 ret) row)) col))
                       (setf ret (ldb *hash-bit-spec* ret))))
         finally (return ret)))
 
@@ -96,7 +87,7 @@
   (= 1 (car id)))
 
 (defun room-p (id)
-  (< 1 (cdr id)))
+  (< 1 (car id)))
 
 (defun stop-p (id)
   (member id '((1 . 3) (1 . 5) (1. 7) (1 . 9)) :test #'equal))
@@ -106,7 +97,7 @@
         do (let ((should-be (gethash letter *finished-positions*))
                  (on-board (letter->positions the-board letter)))
              (loop for idx from 0 below (length on-board)
-                   do (if (not (= (aref should-be idx) (aref on-board idx)))
+                   do (if (not (equal (aref should-be idx) (aref on-board idx)))
                           (return-from finished-p nil))))
         finally (return t)))
 
@@ -204,15 +195,15 @@
 (defvar *priority-queue* nil)
 (defvar *visited* nil)
 
-(defun add-next-board (the-board)
-  (let ((already (gethash the-board *visited*)))
+(defun add-next-board (next)
+  (let ((previous (gethash next *visited*)))
     
-    (cond ((not already)
-           (setf (board-queue-node the-board) (second (multiple-value-list (add-to-heap *priority-queue* the-board))))
-           (setf (gethash the-board *visited*) the-board))
+    (cond ((not previous)
+           (setf (board-queue-node next) (second (multiple-value-list (add-to-heap *priority-queue* next))))
+           (setf (gethash next *visited*) next))
 
-          ((and already (< (board-energy the-board) (board-energy already)))
-           (decrease-key *priority-queue* (board-queue-node already) (board-energy the-board))))))
+          ((and previous (< (board-energy next) (board-energy previous)))
+           (decrease-key *priority-queue* (board-queue-node previous) (board-energy next))))))
 
 (defun schedule-moves-from-position (current-board)
   (loop with occupied = (board->occupied current-board)
@@ -228,7 +219,7 @@
                       (empty! visited)
                       (insert-item visited id)
                       (add-neighbors id 0)))
-             
+
              (loop with start-positions = (letter->positions current-board letter)
                    for idx from 0 below (length start-positions)
                    for start-id across start-positions
@@ -247,13 +238,13 @@
                                              (add-next-board (next-board current-board letter idx next-id distance))))))))))))
 
 (defun part-1 ()
-  (multiple-value-bind (the-grid the-board) (parse-grid-board (read-day-file "23"))
-    (let ((*grid* the-grid)
+  (multiple-value-bind (grid start) (parse-grid-board (read-day-file "23"))
+    (let ((*grid* grid)
           (*visited* (make-hash-table :test #'board-equal :hash-function #'board-hash))
           (*priority-queue* (make-instance 'fibonacci-heap :key #'board-key)))
-      (add-next-board the-board)
+      (add-next-board start)
 
-      (loop for next-board = (pop-heap *priority-queue*) then (pop-heap *priority-queue*)
-            while (not (finished-p next-board))
-            do (schedule-moves-from-position next-board)
-            finally (return (board-energy next-board))))))
+      (loop for next = (pop-heap *priority-queue*) then (pop-heap *priority-queue*)
+            while (not (finished-p next))
+            do (schedule-moves-from-position next)
+            finally (return (board-energy next))))))
