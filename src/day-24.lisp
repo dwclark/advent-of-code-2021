@@ -24,18 +24,18 @@
   start-at)
 
 (defun copy-state (from-alu to-alu)
+  (setf (alu-input to-alu) 9)
   (setf (alu-w to-alu) (alu-w from-alu))
   (setf (alu-x to-alu) (alu-x from-alu))
   (setf (alu-y to-alu) (alu-y from-alu))
   (setf (alu-z to-alu) (alu-z from-alu)))
 
-(defun reset-state (alu &optional reset-input)
+(defun reset-state (alu)
+  (decf (alu-input alu))
   (setf (alu-w alu) 0)
   (setf (alu-x alu) 0)
   (setf (alu-y alu) 0)
-  (setf (alu-z alu) 0)
-  (if reset-input
-      (setf (alu-input alu) 10)))
+  (setf (alu-z alu) 0))
 
 (defun read-alu (alu sym)
   (if (numberp sym)
@@ -91,3 +91,25 @@
         do (if (eq (first (car instruction)) 'inp)
                (setf (aref ret (incf idx)) (make-alu :start-at instruction)))
         finally (return ret)))
+
+(defun execute-alu (alus alu-index)
+  (let ((previous (if (zerop alu-index) nil (aref alus (1- alu-index))))
+        (current (aref alus alu-index))
+        (next (if (< (1+ alu-index) (length alus)) (aref alus (1+ alu-index)) nil)))
+    
+  (if (zerop alu-index)
+      (reset-state current))
+      (copy-state previous current)
+
+  (loop with keep-going = (execute-instruction (car (alu-start-at current)) current)
+        for instruction in (cdr (alu-start-at current))
+        while (and keep-going (not (eq 'inp (car instruction))))
+        do (setf keep-going (execute-instruction instruction current))
+        finally (if next
+                    (execute-alu alus (1+ alu-index))
+                    keep-going))))
+
+(defun part-1 ()
+  (let ((alus (instructions->alus (file->instructions))))
+    (execute-alu alus 0)
+    (concatenate 'string (map 'vector #'(lambda (a) (format nil "~A" (alu-input a))) alus))))
