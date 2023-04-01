@@ -13,7 +13,7 @@
 (defun compute-total-cost (cost-func)
   (let* ((lst (initial-list))
          (table (alist-hash-table (mapcar #'(lambda (c) (cons c 0)) lst))))
-    (loop for proposed from (apply #'min lst) to (apply #'max lst)
+    (loop for proposed in lst
           do (setf (gethash proposed table)
                    (reduce #'+ (mapcar #'(lambda (n) (funcall cost-func (abs (- n proposed)))) lst))))
     (car (sort (hash-table-values table) #'<))))
