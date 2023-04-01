@@ -21,7 +21,7 @@
           (gamma-epsilon nums width counts (1+ idx)
                          (logior gamma (ash 1 idx)) epsilon)
           (gamma-epsilon nums width counts (1+ idx)
-                        gamma (logior epsilon (ash 1 idx))))))
+                         gamma (logior epsilon (ash 1 idx))))))
 (defun part-1 ()
   (let* ((raw (read-day-file "03"))
          (width (length (car raw)))
