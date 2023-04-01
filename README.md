@@ -21,4 +21,12 @@ Each day is in its own package called `day-n`, replace n with the day number. Ea
 
 Run all of the above commands inside your common lisp environment. And your common lisp environemnt SHOULD be a properly set up to use SLIME. The easiest way to do that is to load [quicklisp](https://www.quicklisp.org/beta/) and then let quicklisp set everything up for you.
 
+## At least I finally did finish it (On March 31, 2023)
+
+This one took a long time to finish. In 2021 I was following along pretty well. As usual, in the later days, I fell behind a little. I made it through day 22 and was working on day 23 when I started getting back pain (probably from sitting at the computer too much). I put advent of code to the side to rest my back. A day or two after Christmas I got COVID. Even worse, the COVID made the back pain come back with a vengeance. I'm guessing the general inflamation caused by the virus cause any tissues already somewhat inflamed to go into overdrive. After that followed a long recovery and I never got back into AOC 2021.
+
+A couple of weeks back I started working, slowly, on day 23. It was a pretty hard day for me, though I was able to finally finish it without any code helps. Hopefully, I can solve any hard problem involving Dijkstra's algorithm for least cost paths going forward. At least I know to use a Fibonacci heap/queue from the start. Day 24 was killer, more below. Day 25 was easy, just like it was in 2020.
+
 ## [Day 1](src/day-01.lisp)
+
+Pretty simple day 1 problem. For part one just use the CL sequence function `count-if` to count the number of increasing numbers. For part 2, re-use `count-if` strategy after forming a new list that sums the numbers in the sliding window. I award myself bonus points for not using the `LOOP` macro.
