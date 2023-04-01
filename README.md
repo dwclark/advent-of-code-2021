@@ -65,6 +65,8 @@ I initially solved this the completely naive way. Compute the costs for every po
 
 **v2 Addendum** I realized you can do it with statistics. Part 1 is asking for the distance to the median for every point. Here just round to the nearest integer to keep the cost absolutely minimal. In part 2 the cost function is not just the distance, but the artihmetic sum between 1 and the distance to travel. This is the mean of distance and 1+ the distance. This means that you need to compute the cost function between the current position and the mean. However, you have to be careful to round the mean towards the median (to account for skewedness) and then floor the cost computed (a fractional amount would mean you walk slightly past the destination point).
 
+In mathematical terms we are looking for the value (the mean) that minimizes the total variance of the distances. I'll have to look it up, but this means that the median minimizes the cost function that is simple distance, while the mean minimizes the cost function that is the variance.
+
 ## [Day 23](src/day-23.lisp) The Hardest Day I Did on my Own
 
 If there's one think I have learned from AOC, it's how to apply [Dijkstra's Algorithm](https://en.wikipedia.org/wiki/Dijkstra%27s_algorithm) to least cost path problems. A lot of problems involve understanding the essence of the algorithm, applying the algorithm in its standard form doesn't cut it. What's the essence of Dijkstra's algorithm?
