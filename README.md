@@ -54,3 +54,32 @@ One of the fundamental "tricks" in advent of code is recognizing when to use a m
 The code itself isn't that interesting. This was one of the few times (if I remember) that I used regular expressions to parse the input. Actually, checking AOC 2020, I used it about as much that year. In any case, I did use the lisp reader more heavily, just not today. In both parts the strategy is the same, loop through all of the lines, extract the points on the line as a list, and then increment the total number of lines crossing through that point by one. Finally, add up all of the intersections.
 
 I did like the fact that I made little functions for working with each line type and then using generic fill/increment functions to mutate the map.
+
+## [Day 23](src/day-23.lisp) The Hardest Day I Did on my Own
+
+If there's one think I have learned from AOC, it's how to apply [Dijkstra's Algorithm](https://en.wikipedia.org/wiki/Dijkstra%27s_algorithm) to least cost path problems. A lot of problems involve understanding the essence of the algorithm, applying the algorithm in its standard form doesn't cut it. What's the essence of Dijkstra's algorithm?
+
+- 
+
+## [Day 24](src/day-24.lisp) Just Do It By Hand
+
+First off, I didn't solve this day's at all. I ended up just following along with [Eric Burden's explanation](https://www.ericburden.work/blog/2022/01/05/advent-of-code-2021-day-24/). This is one of those cases where an exact solution arrived at analytically is the only way to do the problem. Searching through a 14 digit space is simply going to take way too long for even the fastest computers with the most optimized code. Eric's solution requires the following insights:
+
+1. There are 14 blocks of code, each starting with the input instruction
+2. A lot of the code ends up being local to the block itself, it never makes a difference outside of the local block
+3. In fact, the only two things that can affect the current block are the previous z value and the current input
+4. The only way to end up with z being zero at the end of block 14 is for some combination of `div` and `mod` operations on z
+5. You have to do a bit of meta-programming, you have to write code that abstracts the code itself
+6. The 14 blocks form 7 pairs of push/pop operations on a stack
+
+The key is 6, which is something I never would have realized had I not had it pointed out to me. I understood 1-4 after looking at the input code for a while. However, my guess was that later blocks would only result in z being 0 if there was a narrow range of inputs for each block. I thought that only certain operations would be legal (no division or mod by zero), and that by caching the results of downstream operations I would be able to short circuit early on upstream operations. This would reduce the search space to a much smaller number, making a straightforward iterative solution work.
+
+I also somewhat understood 5 to be the case, but thought it would involve some sort of code optimization, leading to the elminiation of legal inputs and blocks, which would effectively be a different way of reducing the search space not involving caching. However, I didn't see a way to make that workable.
+
+It should go without saying that the code there probably _does_ work for testing inputs, but it's worthless for arriving at a solution.
+
+## [Day 25](src/day-25.lisp) At Least It Finishes Easily
+
+This is the second year I made it to the very end of an AOC. Both times now day 25 has been a single part and relatively easy. This is good because by the end of it I am always exhauseted.
+
+Day 25 was a fairly standard AOC day. There's a grid of things. Things move around according to rules. You run the game until a condition happens. Then you make a computation based on the number of moves and/or the position of the things in the grid.
