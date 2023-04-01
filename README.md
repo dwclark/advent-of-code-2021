@@ -21,4 +21,4 @@ Each day is in its own package called `day-n`, replace n with the day number. Ea
 
 Run all of the above commands inside your common lisp environment. And your common lisp environemnt SHOULD be a properly set up to use SLIME. The easiest way to do that is to load [quicklisp](https://www.quicklisp.org/beta/) and then let quicklisp set everything up for you.
 
-## [Day 1](src/day-1.lisp)
+## [Day 1](src/day-01.lisp)
