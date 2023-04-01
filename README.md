@@ -55,6 +55,10 @@ The code itself isn't that interesting. This was one of the few times (if I reme
 
 I did like the fact that I made little functions for working with each line type and then using generic fill/increment functions to mutate the map.
 
+## [Day 6](src/day-06.lisp) `ROTATEF` for the Win!
+
+The naive way to do this is to represent how the problem is display on the example: by storing each number in a growing list or vector. Don't do that! Only track the counts of each timer, rotate each day left (using `rotatef`), then augment the 6th position by how many were initial zero to account for spawning. The code ended up quite elegant.
+
 ## [Day 23](src/day-23.lisp) The Hardest Day I Did on my Own
 
 If there's one think I have learned from AOC, it's how to apply [Dijkstra's Algorithm](https://en.wikipedia.org/wiki/Dijkstra%27s_algorithm) to least cost path problems. A lot of problems involve understanding the essence of the algorithm, applying the algorithm in its standard form doesn't cut it. What's the essence of Dijkstra's algorithm?
