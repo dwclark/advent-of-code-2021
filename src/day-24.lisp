@@ -1,3 +1,10 @@
+;; I'm leaving this as a record of attempts (unsuccessful) to solve this problem
+;; The real way to solve this one is by hand and recognizing what the code is
+;; actually doing. I got a small part of the way there, but not going to lie,
+;; I only solved this by adapting the code here:
+;; https://www.ericburden.work/blog/2022/01/05/advent-of-code-2021-day-24/
+;; to my own input and then working out the values by hand.
+
 (defpackage :day-24
   (:use :cl)
   (:import-from :utils :read-day-file)
@@ -15,27 +22,26 @@
                       collecting sym)))
           (read-day-file "24")))
 
+(defun optimize-instructions (instructions)
+  (let ((pass-1 (remove-if #'(lambda (i)
+                               (or (and (eq 'div (first i))
+                                        (eql 1 (third i)))
+                                   (and (eq 'mul (first i))
+                                        (eq 'x (second i))
+                                        (eql 0 (third i))))) instructions)))
+    pass-1))
+
 (defstruct alu
-  (input 10 :type fixnum)
+  (input 0 :type fixnum)
   (w 0 :type fixnum)
   (x 0 :type fixnum)
   (y 0 :type fixnum)
   (z 0 :type fixnum)
+  next
   start-at)
 
-(defun copy-state (from-alu to-alu)
-  (setf (alu-input to-alu) 9)
-  (setf (alu-w to-alu) (alu-w from-alu))
-  (setf (alu-x to-alu) (alu-x from-alu))
-  (setf (alu-y to-alu) (alu-y from-alu))
-  (setf (alu-z to-alu) (alu-z from-alu)))
-
-(defun reset-state (alu)
-  (decf (alu-input alu))
-  (setf (alu-w alu) 0)
-  (setf (alu-x alu) 0)
-  (setf (alu-y alu) 0)
-  (setf (alu-z alu) 0))
+(defun alu->state (alu)
+  (list (alu-x alu) (alu-y alu) (alu-z alu)))
 
 (defun read-alu (alu sym)
   (if (numberp sym)
@@ -54,7 +60,7 @@
 (defun execute-instruction (instruction alu)
   (let ((cmd (first instruction))
         (a (second instruction))
-        (b (if (= 3 (length instruction)) (third instruction) nil)))
+        (b (third instruction)))
         
     (ecase cmd
       (inp (write-alu alu a (alu-input alu)))
@@ -67,11 +73,13 @@
                       (* (read-alu alu a)
                          (read-alu alu b))))
       
-      (div (let ((val (read-alu alu b)))
-             (if (zerop val)
+      (div (let ((val-a (read-alu alu a))
+                 (val-b (read-alu alu b)))
+
+             (if (zerop val-b)
                  nil
                  (write-alu alu a
-                            (floor (/ (read-alu alu a) val))))))
+                            (floor (/ val-a val-b))))))
       
       (mod (let ((val-a (read-alu alu a))
                  (val-b (read-alu alu b)))
@@ -84,32 +92,50 @@
                (write-alu alu a 0))))))
 
 (defun instructions->alus (instructions)
-  (loop with num-inp = (count 'inp instructions :test 'eq :key #'car)
-        with ret = (make-array num-inp :initial-element nil)
-        with idx = -1
-        for instruction on instructions
-        do (if (eq (first (car instruction)) 'inp)
-               (setf (aref ret (incf idx)) (make-alu :start-at instruction)))
-        finally (return ret)))
+  (first (maplist #'(lambda (sub)
+                      (setf (alu-next (car sub)) (cadr sub))
+                      (car sub))
+                  
+                  (remove-if #'null
+                             (maplist #'(lambda (ins)
+                                          (if (eq 'inp (caar ins))
+                                              (make-alu :start-at ins)
+                                              nil))
+                                      instructions)))))
 
-(defun execute-alu (alus alu-index)
-  (let ((previous (if (zerop alu-index) nil (aref alus (1- alu-index))))
-        (current (aref alus alu-index))
-        (next (if (< (1+ alu-index) (length alus)) (aref alus (1+ alu-index)) nil)))
-    
-  (if (zerop alu-index)
-      (reset-state current))
-      (copy-state previous current)
+(defun execute-alu (self y z)
+  (setf (alu-input self) 9
+        (alu-x self) 0
+        (alu-y self) y
+        (alu-z self) z)
+  
+  (labels ((reset ()
+             (decf (alu-input self))
+             (setf (alu-x self) 0 (alu-y self) y (alu-z self) z))
+           (executable (i)
+             (not (or (null i) (eq 'inp (car i))))))
 
-  (loop with keep-going = (execute-instruction (car (alu-start-at current)) current)
-        for instruction in (cdr (alu-start-at current))
-        while (and keep-going (not (eq 'inp (car instruction))))
-        do (setf keep-going (execute-instruction instruction current))
-        finally (if next
-                    (execute-alu alus (1+ alu-index))
-                    keep-going))))
+    (loop with valid = nil
+          while (setf valid (and (<= 1 (alu-input self)) (execute-instruction (car (alu-start-at self)) self)))
+          do (loop for instruction in (cdr (alu-start-at self))
+                   while (and valid (executable instruction))
+                   do (setf valid (execute-instruction instruction self))
+                   finally (progn
+                             (if valid
+                                 (if (alu-next self)
+                                     (setf valid (execute-alu (alu-next self) (alu-y self) (alu-z self)))
+                                     (setf valid (zerop (alu-z self)))))
+
+                             (if (not valid)
+                                 (reset))))
+             
+          finally (return valid))))
 
 (defun part-1 ()
-  (let ((alus (instructions->alus (file->instructions))))
-    (execute-alu alus 0)
-    (concatenate 'string (map 'vector #'(lambda (a) (format nil "~A" (alu-input a))) alus))))
+  (let ((alu (instructions->alus (optimize-instructions (file->instructions)))))
+    (execute-alu alu 0 0)
+    (loop with my-alu = alu
+          while my-alu
+          collecting (format nil "~A" (alu-input my-alu)) into str-list
+          do (setf my-alu (alu-next my-alu))
+          finally (return (parse-integer (format nil "~{~A~}" str-list))))))
