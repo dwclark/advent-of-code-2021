@@ -9,6 +9,7 @@
                (:file "src/day-02" :depends-on ("src/utils"))
                (:file "src/day-03" :depends-on ("src/utils"))
                (:file "src/day-04" :depends-on ("src/utils"))
+               (:file "src/day-04-no-loops" :depends-on ("src/utils"))
                (:file "src/day-05" :depends-on ("src/utils"))
                (:file "src/day-06" :depends-on ("src/utils"))
                (:file "src/day-07" :depends-on ("src/utils"))
