@@ -59,7 +59,17 @@ I did like the fact that I made little functions for working with each line type
 
 If there's one think I have learned from AOC, it's how to apply [Dijkstra's Algorithm](https://en.wikipedia.org/wiki/Dijkstra%27s_algorithm) to least cost path problems. A lot of problems involve understanding the essence of the algorithm, applying the algorithm in its standard form doesn't cut it. What's the essence of Dijkstra's algorithm?
 
-- 
+1. From your current position, compute the frontier
+2. Order the frontier from least costly to most costly in a priority queue or heap.
+3. Select the next least costly move in the frontier. If it is the finished state, stop. Otherwise go back to step 1.
+
+Because you are always keeping an exact order of costs, and you are always evaluating the least costly move, you are guaranteed to arrive at the least costly finished state before arriving at more costly finished states. Day 23 complicates the algorithm in the following ways:
+
+- There are multiple moving pieces, so you have to compute the frontier for each piece separately
+- You need to deduplicate redundant frontiers and only add one to the frontier. For example a -> 1 then b -> 3 is the same as b -> 3 then a -> 1
+- Determining the frontier for any single piece is difficult because of all of the fiddly rules that determine what a legal move is
+- There are several ways to move to the same board state, each will have different costs. If you find a way that is cheaper, you will need to update the cost for that board state if it has already been submitted for analysis. Using a Fibonacci heap is the best way to do this.
+- The concept of "visited" becomes significanly muddier
 
 ## [Day 24](src/day-24.lisp) Just Do It By Hand
 
