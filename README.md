@@ -37,7 +37,7 @@ One goal this year was to make better use of the lisp reader to a) parse files m
 
 ## [Day 3](src/day-03.lisp) Recursion and bit-twiddling
 
-Like I said, I was really trying to valid `LOOP` in 2021. I later gave up on it, but early on, it was fun. This day used recursion to avoid looping, thus the code probably reads more like scheme than common lisp. Day 1 uses recursion to gradually build up binary numbers using `logior`. Day 2 continues filtering out list entries until it finds a single remaining value and then returns.
+Like I said, I was really trying to avoid `LOOP` in 2021. I later gave up on it, but early on, it was fun. This day used recursion to avoid looping, thus the code probably reads more like scheme than common lisp. Day 1 uses recursion to gradually build up binary numbers using `logior`. Day 2 continues filtering out list entries until it finds a single remaining value and then returns.
 
 One upside to doing it this way is that there is only one `setf` and so most of the functions are, well, functional. And the only setf is used to create the initial data that is then passed on to functions for analysis. This also made the code quite elegant. However, after over a year of not looking at the code, it wasn't obvious what it was doing. I'm not sure this is actually an argument for mutable state; I'm not sure a loop mutating variables would actuall _be_ any better.
 
