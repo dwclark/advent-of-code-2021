@@ -67,6 +67,10 @@ I initially solved this the completely naive way. Compute the costs for every po
 
 In mathematical terms we are looking for the value (the mean) that minimizes the total variance of the distances. I'll have to look it up, but this means that the median minimizes the cost function that is simple distance, while the mean minimizes the cost function that is the variance.
 
+## [Day 8](src/day-08.lisp) Constraint Satisfaction
+
+Constraint satisfaction problems are probably my least favorite days in AOC. Part-1 is simple, just count strings matching a pattern. Part-2 is the actual constraint satisfaction. Since the search space is small, just brute force it by enumerating all possible light patterns, search for the valid pattern, then do the multiplication problem.
+
 ## [Day 23](src/day-23.lisp) The Hardest Day I Did on my Own
 
 If there's one think I have learned from AOC, it's how to apply [Dijkstra's Algorithm](https://en.wikipedia.org/wiki/Dijkstra%27s_algorithm) to least cost path problems. A lot of problems involve understanding the essence of the algorithm, applying the algorithm in its standard form doesn't cut it. What's the essence of Dijkstra's algorithm?
