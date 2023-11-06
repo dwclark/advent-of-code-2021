@@ -1,7 +1,7 @@
 (defpackage :utils
   (:use :cl)
   (:export #:read-file #:read-day-file #:split-blank-lines #:read-blank-line-blocks
-           #:*input-directory* 
+           #:*input-directory* #:print-assert
            #:bit-vector->integer #:integer->bit-vector #:power-set))
 
 (in-package :utils)
@@ -129,3 +129,7 @@
              (setf (aref bitvec i) (rem num 2))
              (setf num (floor (/ num 2))))
         finally (return bitvec)))
+
+(defun print-assert (prefix result should-be)
+  (assert (equal result should-be))
+  (format t "~A ~A~%" prefix result))

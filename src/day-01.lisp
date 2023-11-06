@@ -1,18 +1,17 @@
-(defpackage :day-01
-  (:use :cl)
-  (:import-from :utils :load-numbers)
-  (:export #:part-1 #:part-2))
-
+(defpackage :day-01 (:use :cl)
+  (:import-from :utils :read-day-file :print-assert)
+  (:export #:exec))
 (in-package :day-01)
 
-(defun count-prev< (lst)
-  (count-if #'(lambda (c) (< (car c) (cdr c)))
-            (mapcar #'cons lst (rest lst))))
+(defun count-prev< (the-list)
+  (loop for (prev . next) in (mapcar #'cons the-list (rest the-list))
+	counting (< prev next)))
 
-(defun part-1 ()
-  (count-prev< (concatenate 'list (load-numbers "01"))))
+(defun window-averages (the-list)
+  (labels ((avg (v1 v2 v3) (float (/ (+ v1 v2 v3) 3))))
+    (mapcar #'avg the-list (rest the-list) (rest (rest the-list)))))
 
-(defun part-2 ()
-  (let ((nums (concatenate 'list (load-numbers "01"))))
-    (count-prev< (mapcar #'(lambda (lst) (apply #'+ lst))
-                         (mapcar 'list *nums* (rest *nums*) (rest (rest *nums*)))))))
+(defun exec ()
+  (let ((all (mapcar #'parse-integer (read-day-file "01"))))
+    (print-assert "Part 1:" (count-prev< all) 1692)
+    (print-assert "Part 2:" (count-prev< (window-averages all)) 1724)))
